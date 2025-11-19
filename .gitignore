@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+.DS_Store
+
+# Whisper Flow specific
+input_audio/
+notes/
+web_ui/static/audio/

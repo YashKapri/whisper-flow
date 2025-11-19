@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Whisper Flow Pro – Mic Dictation (EN/HI)</title>
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; max-width:900px; margin:1rem auto; }
+    .card { background:#fff; padding:1rem; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,0.06); margin-bottom:1rem;}
+    button { padding:0.5rem 1rem; border-radius:8px; border:none; cursor:pointer; }
+    .mic { background:#ef4444; color:white; border-radius:999px; width:64px; height:64px; display:flex; align-items:center; justify-content:center; font-weight:700; }
+  </style>
+</head>
+<body>
+  <h1>Whisper Flow Pro (Local) — EN / HI</h1>
+
+  <div class="card">
+    <p>Hold the mic button to record; release to send to local Whisper.</p>
+
+    <div style="display:flex; align-items:center; gap:1rem;">
+      <button id="micBtn" class="mic">🎤</button>
+      <div>
+        <label for="language">Language:</label>
+        <select id="language">
+          <option value="auto" selected>Auto detect</option>
+          <option value="en">English</option>
+          <option value="hi">Hindi</option>
+        </select>
+        <span id="status" style="margin-left:1rem;"></span>
+      </div>
+    </div>
+    
+
+    <div id="result" style="display:none; margin-top:1rem;">
+      <h3 id="title"></h3>
+      <p id="languageLabel"></p>
+      <h4>Summary</h4>
+      <p id="summary"></p>
+      <h4>Action Items</h4>
+      <ul id="tasks"></ul>
+      <h4>Transcript</h4>
+      <pre id="transcript"></pre>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Upload audio file instead</h3>
+    <div class="card">
+    <h3>Upload audio file instead</h3>
+    <form id="uploadForm">
+      <input type="file" id="audiofile" name="audio" accept="audio/*" required />
+      <select id="fileLanguage" name="language">
+        <option value="auto" selected>Auto detect</option>
+        <option value="en">English</option>
+        <option value="hi">Hindi</option>
+      </select>
+
+      <label for="task">Output:</label>
+      <select id="task" name="task">
+        <option value="transcribe" selected>Transcript (same language)</option>
+        <option value="translate">Translate → English</option>
+      </select>
+      <button type="submit">Upload and Transcribe</button>
+    </form>
+  </div>
+
+  <script>
+    // Microphone press-and-hold recording using MediaRecorder
+    const micBtn = document.getElementById("micBtn");
+    const status = document.getElementById("status");
+    const languageSelect = document.getElementById("language");
+    const result = document.getElementById("result");
+    const titleEl = document.getElementById("title");
+    const languageLabel = document.getElementById("languageLabel");
+    const summaryEl = document.getElementById("summary");
+    const tasksEl = document.getElementById("tasks");
+    const transcriptEl = document.getElementById("transcript");
+
+    let mediaRecorder;
+    let chunks = [];
+
+    async function startMic() {
+      chunks = [];
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        // Convert to WAV on server (ffmpeg) — backend accepts .wav, but Flask can accept webm too; we'll send webm
+        const fd = new FormData();
+        fd.append('audio', blob, 'mic.webm');
+        fd.append('language', languageSelect.value || 'auto');
+
+        status.textContent = "Uploading...";
+        try {
+          const res = await fetch('/upload', { method: 'POST', body: fd });
+          const data = await res.json();
+          if (!res.ok) {
+            status.textContent = data.error || 'Error';
+            return;
+          }
+          status.textContent = "Done.";
+          result.style.display = 'block';
+          titleEl.textContent = data.title;
+          languageLabel.textContent = data.language ? `Language: ${data.language}` : '';
+          summaryEl.textContent = data.summary;
+          tasksEl.innerHTML = '';
+          if (data.tasks && data.tasks.length) {
+            data.tasks.forEach(t => {
+              const li = document.createElement('li'); li.textContent = t; tasksEl.appendChild(li);
+            });
+          } else {
+            const li = document.createElement('li'); li.textContent = 'No clear action items detected.'; tasksEl.appendChild(li);
+          }
+          transcriptEl.textContent = data.transcript;
+        } catch (err) {
+          console.error(err);
+          status.textContent = "Upload/transcription error.";
+        }
+      };
+
+      mediaRecorder.start();
+      status.textContent = "Recording… release mic to send";
+    }
+
+    micBtn.addEventListener('mousedown', async (e) => {
+      try {
+        await startMic();
+      } catch (err) {
+        console.error(err);
+        status.textContent = "Microphone access denied or error.";
+      }
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (mediaRecorder && mediaRecorder.state === "recording") {
+        mediaRecorder.stop();
+        status.textContent = "Processing...";
+      }
+    });
+
+    // keyboard-friendly: toggle with spacebar on the mic button when focused
+    micBtn.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (mediaRecorder && mediaRecorder.state === 'recording') {
+          mediaRecorder.stop();
+        } else {
+          startMic();
+        }
+      }
+    });
+
+    // Upload form
+    const uploadForm = document.getElementById('uploadForm');
+    uploadForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fileInput = document.getElementById('audiofile');
+      if (!fileInput.files || fileInput.files.length === 0) return;
+      const fd = new FormData();
+      fd.append('audio', fileInput.files[0]);
+      fd.append('language', document.getElementById('fileLanguage').value || 'auto');
+      fd.append('task', document.getElementById('task').value);
+      status.textContent = "Uploading...";
+      try {
+        const res = await fetch('/upload', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!res.ok) {
+          status.textContent = data.error || 'Error';
+          return;
+        }
+        status.textContent = "Done.";
+        result.style.display = 'block';
+        titleEl.textContent = data.title;
+        languageLabel.textContent = data.language ? `Language: ${data.language}` : '';
+        summaryEl.textContent = data.summary;
+        tasksEl.innerHTML = '';
+        if (data.tasks && data.tasks.length) {
+          data.tasks.forEach(t => {
+            const li = document.createElement('li'); li.textContent = t; tasksEl.appendChild(li);
+          });
+        } else {
+          const li = document.createElement('li'); li.textContent = 'No clear action items detected.'; tasksEl.appendChild(li);
+        }
+        transcriptEl.textContent = data.transcript;
+      } catch (err) {
+        console.error(err);
+        status.textContent = "Upload/transcription error.";
+      }
+    });
+  </script>
+</body>
+</html>
