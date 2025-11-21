@@ -154,6 +154,13 @@ def upload():
         "language": lang_label,
     })
 
+@app.route("/list-notes")
+def list_notes():
+    NOTES_DIR.mkdir(exist_ok=True)
+    # Get list of note filenames
+    notes = [n.name for n in sorted(NOTES_DIR.glob("*.md"), reverse=True)]
+    return jsonify(notes)
+
 
 if __name__ == "__main__":
     app.run(debug=True)
