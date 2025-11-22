@@ -1,9 +1,8 @@
 // --- INITIALIZATION ---
 document.addEventListener('DOMContentLoaded', () => {
     lucide.createIcons();
-    setupRecorderEvents(); 
+    setupRecorderEvents(); // Sirf listeners attach karo, HTML mat badlo
 });
-
 // --- STATE VARIABLES ---
 let mediaRecorder;
 let audioChunks = [];

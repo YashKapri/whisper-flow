@@ -1,4 +1,4 @@
-import whisper
+from faster_whisper import WhisperModel
 from celery import Celery
 import os
 from sqlalchemy import create_engine, text
@@ -7,34 +7,30 @@ from sqlalchemy import create_engine, text
 celery = Celery('tasks', broker=os.environ.get('CELERY_BROKER_URL'))
 db_engine = create_engine(os.environ.get('DATABASE_URL'))
 
-# Global variable for lazy loading
+# Global variable
 model = None
 
 def get_model():
     global model
     if model is None:
-        print("Loading Whisper Model...")
-        # Speed aur Accuracy ka best balance (Small)
-        model = whisper.load_model("small")
+        print("Loading Faster-Whisper Model...")
+        # OPTIMIZATION 1: 'medium' model with 'int8'
+        # Accuracy: High | Speed: Fast | VRAM: ~1.5GB (Perfect for GTX 1650)
+        model = WhisperModel("medium", device="cuda", compute_type="int8")
         print("Model Loaded!")
     return model
 
-# --- GARBAGE FILTER FUNCTION ---
+# --- GARBAGE FILTER ---
 def clean_hallucinations(text):
-    """Remove known Whisper hallucinations"""
     garbage_phrases = [
         "transcribe your voice", "I'm Ashka", "Ashkabli", "Amara.org", 
         "coding", "subscribe", "my name is", "MBC", "copyright"
     ]
-    
     cleaned_text = text
     for phrase in garbage_phrases:
         if phrase.lower() in text.lower():
-            print(f"[Filter] Removed hallucination: {phrase}")
-            if len(text) < 50: 
-                return ""
+            if len(text) < 50: return ""
             cleaned_text = cleaned_text.replace(phrase, "")
-            
     return cleaned_text.strip()
 
 @celery.task(bind=True)
@@ -48,26 +44,31 @@ def transcribe_audio(self, file_path, task_id_db, language="auto"):
         # 2. Get AI
         ai_model = get_model()
         
-        # 3. Run AI (Translation Mode)
-        options = {
-            "fp16": False,
-            "task": "translate",
-            "temperature": 0,
-            "no_speech_threshold": 0.75,
-            "logprob_threshold": -1.0,
-            "condition_on_previous_text": False,
-            "initial_prompt": "Hello." 
-        }
-        
-        result = ai_model.transcribe(file_path, **options)
-        raw_text = result.get("text", "").strip()
+        # 3. Run AI (ULTIMATE SETTINGS)
+        segments, info = ai_model.transcribe(
+            file_path, 
+            
+            # Accuracy Settings
+            beam_size=5,            # High precision search
+            task="translate",       # Force English
+            condition_on_previous_text=False, # Reduces loops
+            
+            # PERFORMANCE BOOSTER (VAD)
+            vad_filter=True,        # Ignore silence! (Speed++ & Accuracy++)
+            vad_parameters=dict(min_silence_duration_ms=500),
+            
+            # Thresholds
+            no_speech_threshold=0.6
+        )
 
-        # 4. Apply Garbage Filter
-        final_text = clean_hallucinations(raw_text)
-        if not final_text:
-            final_text = "[Silence / No Speech Detected]"
+        # Combine Segments
+        full_text = " ".join([segment.text for segment in segments]).strip()
 
-        # 5. Save to DB
+        # 4. Apply Filter
+        final_text = clean_hallucinations(full_text)
+        if not final_text: final_text = "[Silence / Unclear]"
+
+        # 5. Save
         with db_engine.connect() as conn:
             conn.execute(text("""
                 UPDATE notes 
@@ -76,13 +77,10 @@ def transcribe_audio(self, file_path, task_id_db, language="auto"):
             """), {"t": final_text, "id": task_id_db})
             conn.commit()
 
-        # --- 6. AUTO CLEANUP (DELETE AUDIO FILE) ---
+        # 6. Cleanup (Save Space)
         try:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-                print(f"[Cleanup] Successfully deleted: {file_path}")
-        except Exception as cleanup_error:
-            print(f"[Cleanup Warning] Could not delete file: {cleanup_error}")
+            if os.path.exists(file_path): os.remove(file_path)
+        except: pass
             
         return "Done"
         
@@ -91,10 +89,6 @@ def transcribe_audio(self, file_path, task_id_db, language="auto"):
         with db_engine.connect() as conn:
             conn.execute(text("UPDATE notes SET status='Failed' WHERE id=:id"), {"id": task_id_db})
             conn.commit()
-        
-        # Error ke case mein bhi file delete kar deni chahiye taaki kachra na jama ho
         try:
-            if os.path.exists(file_path):
-                os.remove(file_path)
-        except:
-            pass
+            if os.path.exists(file_path): os.remove(file_path)
+        except: pass
