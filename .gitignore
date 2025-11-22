@@ -1,16 +1,24 @@
-# Python
+# Ignore Virtual Env
+venv/
+.venv/
+env/
+
+# Ignore Bytecode
 __pycache__/
 *.py[cod]
-.venv/
-venv/
-.env
 
-# Node / Frontend
-node_modules/
-frontend/dist/
-.DS_Store
+# Ignore Database Data (Docker Volume)
+postgres_data/
 
-# Whisper Flow specific
+# Ignore Large Files & Uploads
+*.wav
+*.mp3
+uploads/
 input_audio/
 notes/
-web_ui/static/audio/
+
+# Ignore Environment Variables (Security)
+.env
+
+# Ignore IDE settings
+.vscode/

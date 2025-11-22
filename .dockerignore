@@ -1,0 +1,15 @@
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Virtual Environment (Ye sabse zaroori hai)
+.venv/
+venv/
+ENV/
+
+# Heavy Folders (Jo build mein nahi chahiye)
+input_audio/
+uploads/
+notes/
+.git/
+node_modules/

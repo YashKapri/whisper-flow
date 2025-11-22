@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  # 1. The Web Interface
+  web:
+    build: .
+    command: gunicorn -w 4 -b 0.0.0.0:5000 app:app
+    ports:
+      - "5000:5000"
+    volumes:
+      - .:/app
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://user:pass@db:5432/whisper_db
+    depends_on:
+      - redis
+      - db
+
+  # 2. The AI Worker (Heavy Lifter)
+  worker:
+    build: .
+    # Is process ko GPU access chahiye agar available hai
+    command: celery -A tasks worker --loglevel=info --concurrency=1
+    volumes:
+      - .:/app
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://user:pass@db:5432/whisper_db
+    depends_on:
+      - redis
+      - db
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # 3. The Messenger
+  redis:
+    image: redis:7-alpine
+
+  # 4. The Database
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+      POSTGRES_DB: whisper_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
