@@ -1,4 +1,4 @@
-
+# 🎙️ Whisper Flow - Enterprise AI Transcription System
 
 ![Whisper Flow Banner](https://img.shields.io/badge/Status-Production%20Ready-success?style=for-the-badge)
 ![Docker](https://img.shields.io/badge/Docker-Containerized-blue?style=for-the-badge&logo=docker)
