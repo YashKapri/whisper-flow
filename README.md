@@ -50,18 +50,6 @@ It features a modern **Glassmorphism SPA Dashboard**, real-time processing statu
 
 ---
 
-## ⚡Whisper-Flow-Enterprise/
-├── docker-compose.yml      # Orchestration config
-├── Dockerfile              # Container definitions
-├── app.py                  # Flask Web Server (API)
-├── tasks.py                # Celery Worker (AI Logic)
-├── global_client.py        # System-wide Hotkey Client
-├── requirements.txt        # Python dependencies
-├── start_everything.bat    # One-click launcher
-├── templates/
-│   └── index.html          # Main Dashboard UI
-└── static/
-    └── script.js           # Frontend Logic (SPA)
 
 
 
